@@ -41,6 +41,7 @@ public:
   double freq;
 
   std::string         laser_scan_topic;
+  std::string         laser_scan_frame_id;
   std::string         odom_topic;
   std::string         base_frame_id;
   std::string         odom_frame_id;
@@ -73,6 +74,7 @@ CLaserOdometry2DNode::CLaserOdometry2DNode() :
   //----------------
   ros::NodeHandle pn("~");
   pn.param<std::string>("laser_scan_topic",laser_scan_topic,"/laser_scan");
+  pn.param<std::string>("laser_scan_frame_id",laser_scan_frame_id,"top_lrf_link");
   pn.param<std::string>("odom_topic", odom_topic, "/odom_rf2o");
   pn.param<std::string>("base_frame_id", base_frame_id, "/base_link");
   pn.param<std::string>("odom_frame_id", odom_frame_id, "/odom");
@@ -89,11 +91,13 @@ CLaserOdometry2DNode::CLaserOdometry2DNode() :
   //init pose??
   if (init_pose_from_topic != "")
   {
-    initPose_sub = n.subscribe<nav_msgs::Odometry>(init_pose_from_topic,1,&CLaserOdometry2DNode::initPoseCallBack,this);
+    ROS_INFO("wait for initPoseMessage");
+    initPose_sub = n.subscribe<nav_msgs::Odometry>(init_pose_from_topic, 1, &CLaserOdometry2DNode::initPoseCallBack, this);
     GT_pose_initialized  = false;
   }
   else
   {
+    ROS_INFO("init pose all zero");
     GT_pose_initialized = true;
     initial_robot_pose.pose.pose.position.x = 0;
     initial_robot_pose.pose.pose.position.y = 0;
@@ -123,7 +127,10 @@ bool CLaserOdometry2DNode::setLaserPoseFromTf()
   transform.setIdentity();
   try
   {
-    tf_listener.lookupTransform(base_frame_id, last_scan.header.frame_id, ros::Time(0), transform);
+    ROS_INFO("tf: %s -> %s", base_frame_id.c_str(), laser_scan_frame_id.c_str());
+    tf_listener.waitForTransform(base_frame_id, laser_scan_frame_id, ros::Time(), ros::Duration(5.0));
+    // tf_listener.lookupTransform(base_frame_id, last_scan.header.frame_id, ros::Time(0), transform);
+    tf_listener.lookupTransform(base_frame_id, laser_scan_frame_id, ros::Time(0), transform);
     retrieved = true;
   }
   catch (tf::TransformException &ex)
@@ -161,7 +168,8 @@ bool CLaserOdometry2DNode::scan_available()
 
 void CLaserOdometry2DNode::process(const ros::TimerEvent&)
 {
-  if( is_initialized() && scan_available() )
+
+  if (is_initialized() && scan_available())
   {
     //Process odometry estimation
     odometryCalculation(last_scan);
